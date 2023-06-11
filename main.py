@@ -1,15 +1,15 @@
 import sqlite3
 import requests
 from bs4 import BeautifulSoup as BS
-import lxml
 from tkinter import *
 from tkinter import ttk
 from tkinter.ttk import Combobox
 
-history_list = []
-list = []
+f = open('his.txt', 'a+') # создание файла, архивирующего данные (если его не существует)
+f.close()
 
-def request_currency():
+def request_currency(): # запрос к бирже, получение списка показателей валют
+    list = []
     url = 'https://finance.rambler.ru/currencies/?ysclid=lf5c2nj4dn388282270'
     r = requests.get(url)
     soup = BS(r.text, 'lxml')
@@ -35,8 +35,8 @@ def request_currency():
 
     return list
 
-def creating_database():
-    with sqlite3.connect('C:\\Users\\Вероника\\Desktop\\pythonProject1\\data_base.db') as db:
+def creating_database(): # создание базы данных 
+    with sqlite3.connect('data_base.db') as db:
         cur = db.cursor()
 
         db.execute("""CREATE TABLE IF NOT EXISTS data (nominal INT, currency TEXT, value REAL)""")
@@ -51,7 +51,8 @@ def creating_database():
 
     return previous_list
 
-def difference_analysis(list, previous_list):
+def difference_analysis(list, previous_list): # сравнительный анализ актуальных и предыдущих данных
+    global history_list
     differencies = []
     k = 0
     for x in list:
@@ -68,22 +69,40 @@ def difference_analysis(list, previous_list):
             max_diff = abs(differencies[i][2])
 
     rez = []
+    
+    f = open('his.txt', "r")
+    k = 0  # кол-во записей
+    if f:
+        for s in f.readlines():
+            k = k + 1
+        f.close()
 
     if max_diff == 0:
         print("Изменений в базе данных не было.")
         rez.append("Изменений в базе данных не было.")
-        if len(history_list) == 0:
-            history_list.append(list)
+        if k == 0:
+            f = open('his.txt', "a+")
+            for i in range(len(list)):
+                f.write(str(list[i][2]))
+                f.write(" ")
+            f.write("\n")
+            f.close()
     else:
         print("Максимальное абсолютное изменение у ", differencies[ind_max][0], differencies[ind_max][1], ". Оно равно: ", differencies[ind_max][2])
         rez.append("Максимальное абсолютное изменение у " + str(differencies[ind_max][0]) + " " + str(differencies[ind_max][1]) + ". Оно равно: " + str(differencies[ind_max][2]))
-        if len(history_list) == 10:
-            history_list.pop(0)
-        history_list.append(list)
+        if k == 10:
+            f = open('his.txt').readlines()
+            open('his.txt', 'w').writelines(f[1:])
+        f = open('his.txt', "a+")
+        for i in range(len(list)):
+            f.write(str(list[i][2]))
+            f.write(" ")
+        f.write("\n")
+        f.close()
 
     return rez
 
-def creating_interface(history_list, list, previous_list, rez):
+def creating_interface(list, previous_list, rez): # создание интерфейса
 
     root = Tk()
     root.title("Окно")
@@ -96,7 +115,7 @@ def creating_interface(history_list, list, previous_list, rez):
 
 
     def clicked():
-        lbl = Label(tab1, text="Данные с Запрос 1")
+        lbl = Label(tab1, text="Данные с Запрос 1 от")
         lbl.grid(column=0, row=3)
         res = "Данные с {}".format(combobox.get())
         lbl.configure(text=res)
@@ -110,24 +129,47 @@ def creating_interface(history_list, list, previous_list, rez):
         tree.heading("value", text="Значение")
 
         count = int((combobox.get())[7:])
-        if count <= len(history_list):
-            for currency in history_list[count - 1]:
-                tree.insert("", END, values=currency)
+
+        f = open('his.txt', "r")
+        k = 0  # кол-во записей
+        for s in f.readlines():
+            k = k + 1
+        f.close()
+
+        if count <= k:
+            f = open('his.txt', "r")
+            k1 = 0
+            for s in f.readlines():
+                k1 = k1 + 1
+                if k1 == count:
+                    k2 = 0
+                    for i in s.split():
+                        currency = [list[k2][0], list[k2][1], float(i)]
+                        tree.insert("", END, values=currency)
+                        k2 = k2 + 1
 
             scrollbar = ttk.Scrollbar(tab1, orient=VERTICAL, command=tree.yview)
             tree.configure(yscroll=scrollbar.set)
             scrollbar.grid(row=4, column=1, sticky="ns")
+
         else:
             lbl = Label(tab1, text="Невозможно выполнить запрос")
-            lbl.grid(column=0, row=5)
+            lbl.grid(column=0, row=7)
 
     def clicked1():
         lbl4 = Label(tab2, text= rez[0])
         lbl4.grid(column=0, row=1)
 
+    f = open('his.txt', "r")
+    k = 0  # кол-во записей
+    for s in f.readlines():
+        k = k + 1
+    f.close()
+
     requests = []
-    for i in range(len(history_list)):
+    for i in range(k):
         requests.append("Запрос " + str(i + 1))
+
     combobox = ttk.Combobox(tab1, values=requests)
     combobox.current(0)
     combobox.grid(column=0, row=2)
@@ -151,10 +193,9 @@ def creating_interface(history_list, list, previous_list, rez):
 
 list = request_currency()
 previous_list = creating_database()
-if len(previous_list) != 0:
+if len(previous_list) != 0: 
     rez = difference_analysis(list, previous_list)
+    creating_interface(list, previous_list, rez)
 else:
     print("Это первый запрос. Провести сравнительный анализ с предыдущим невозможно.")
-print(history_list)
-
-creating_interface(history_list, list, previous_list, rez)
+    rez = ["Это первый запрос. Провести сравнительный анализ с предыдущим невозможно."]
